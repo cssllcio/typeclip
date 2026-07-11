@@ -18,6 +18,30 @@ public enum PerformanceEngine {
         let clusters = Array(working) // [Character] — grapheme clusters
         let baseMs = 60_000.0 / (options.wpm * 5.0)
 
+        // Pre-plan typos: cluster index of the wrong char → overshoot count (1-2).
+        var typoAt: [Int: Int] = [:]
+        if options.typoRate > 0 {
+            var i = 0
+            while i < clusters.count {
+                guard isTypoEligible(clusters[i]) else { i += 1; continue }
+                var end = i
+                while end + 1 < clusters.count, isTypoEligible(clusters[end + 1]) { end += 1 }
+                // Word span [i, end]. One roll per word.
+                if rng.uniform() < options.typoRate {
+                    let lastAllowed = clusters.count - typoSafeTailGraphemes - 1
+                    // Wrong char needs ≥1 following in-word char to overshoot into.
+                    let candidates = (i...end).filter { $0 < end && $0 <= lastAllowed }
+                    if !candidates.isEmpty {
+                        let pick = candidates[Int(rng.next() % UInt64(candidates.count))]
+                        let maxOvershoot = Swift.min(2, end - pick)
+                        let overshoot = maxOvershoot == 1 ? 1 : 1 + Int(rng.next() % 2)
+                        typoAt[pick] = overshoot
+                    }
+                }
+                i = end + 1
+            }
+        }
+
         func drawDelay(after previous: Character?) -> Double {
             if options.flat { return baseMs }
             // Log-normal with mean preserved at baseMs: μ = ln(base) − σ²/2.
@@ -70,6 +94,32 @@ public enum PerformanceEngine {
                 index += 1
                 continue
             }
+            if let overshoot = typoAt[index] {
+                // 1) The wrong character.
+                let wrong = QwertyNeighbors.neighbor(of: ch, rng: &rng)
+                emitCluster(wrong, delay: drawDelay(after: previous))
+                previous = wrong
+                // 2) Overshoot: keep typing 1-2 correct characters.
+                for j in 1...overshoot {
+                    let c = clusters[index + j]
+                    emitCluster(c, delay: drawDelay(after: previous))
+                    previous = c
+                }
+                // 3) Notice (300-700 ms) on the first backspace, then fast erasing.
+                let notice = noticePauseMinMs + rng.uniform() * (noticePauseMaxMs - noticePauseMinMs)
+                for b in 0...overshoot { // overshoot + 1 backspaces
+                    events.append(KeystrokeEvent(action: .backspace,
+                                                 delayBeforeMs: b == 0 ? notice : baseMs / 2.0))
+                }
+                // 4) Retype the corrected sequence at normal rhythm.
+                for j in 0...overshoot {
+                    let c = clusters[index + j]
+                    emitCluster(c, delay: drawDelay(after: previous))
+                    previous = c
+                }
+                index += overshoot + 1
+                continue
+            }
             emitCluster(ch, delay: drawDelay(after: previous))
             previous = ch
             index += 1
@@ -92,5 +142,9 @@ public enum PerformanceEngine {
         case "\n": return 5.0
         default: return 1.0
         }
+    }
+
+    static func isTypoEligible(_ ch: Character) -> Bool {
+        ch.isASCII && (ch.isLetter || ch.isNumber)
     }
 }
