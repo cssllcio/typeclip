@@ -11,6 +11,7 @@ public enum PerformanceEngine {
     static let typoSafeTailGraphemes = 3
 
     public static func plan(text: String, options: PerformanceOptions) -> [KeystrokeEvent] {
+        var rng = SplitMix64(seed: options.seed)
         let working = options.newlineMode == .strip
             ? text.replacingOccurrences(of: "\n", with: " ")
             : text
@@ -19,8 +20,12 @@ public enum PerformanceEngine {
 
         func drawDelay(after previous: Character?) -> Double {
             if options.flat { return baseMs }
-            // Task 5 replaces this stub with log-normal jitter + context multipliers.
-            return baseMs
+            // Log-normal with mean preserved at baseMs: μ = ln(base) − σ²/2.
+            let mu = Foundation.log(baseMs) - (sigma * sigma) / 2.0
+            let sample = Foundation.exp(mu + sigma * rng.gaussian())
+            let value = sample * contextMultiplier(after: previous)
+            if previous == "\n" { return Swift.min(value, newlineDelayCapMs) }
+            return value
         }
 
         var events: [KeystrokeEvent] = []
@@ -75,5 +80,17 @@ public enum PerformanceEngine {
                                          delayBeforeMs: submitDelayMs))
         }
         return events
+    }
+
+    /// Pause multiplier applied to the keystroke that FOLLOWS `previous`.
+    static func contextMultiplier(after previous: Character?) -> Double {
+        guard let p = previous else { return 1.0 }
+        switch p {
+        case ".", "!", "?": return 3.5
+        case ",", ";", ":": return 2.0
+        case " ": return 1.3
+        case "\n": return 5.0
+        default: return 1.0
+        }
     }
 }
