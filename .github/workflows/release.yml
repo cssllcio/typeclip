@@ -1,0 +1,119 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Stamp version from tag
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          cat > Sources/typeclip/Version.swift <<EOF
+          enum Version {
+              static let current = "${VERSION}"
+          }
+          EOF
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build universal binary
+        run: |
+          set -euo pipefail
+          swift build -c release --arch arm64 --arch x86_64
+          BIN=.build/apple/Products/Release/typeclip
+          file "$BIN" | grep "universal" # arm64 + x86_64 or fail loudly
+          echo "BIN=$BIN" >> "$GITHUB_ENV"
+
+      - name: Import Developer ID certificate
+        env:
+          APP_CERT_P12: ${{ secrets.MACOS_DEVELOPER_ID_CERT_P12 }}
+          APP_CERT_PW: ${{ secrets.MACOS_DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/typeclip.keychain"
+          KEYCHAIN_PASS=$(openssl rand -base64 24)
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          printf '%s' "$APP_CERT_P12" | base64 -d > "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" -k "$KEYCHAIN_PATH" -P "$APP_CERT_PW" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/app.p12"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychain -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          # Capture find-identity into a var FIRST — piping through `head -1` under
+          # pipefail dies with SIGPIPE even when the identity exists (Vibrai lesson).
+          APP_LIST=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" || true)
+          printf '%s\n' "$APP_LIST"
+          APP_IDENT=$(printf '%s\n' "$APP_LIST" | sed -nE 's/.*"(Developer ID Application:[^"]+)".*/\1/p' | head -n1 || true)
+          [ -n "$APP_IDENT" ] || { echo "::error::no Developer ID Application identity found"; exit 1; }
+          echo "APP_IDENT=$APP_IDENT" >> "$GITHUB_ENV"
+
+      - name: Sign, zip, notarize
+        env:
+          NOTARY_KEY: ${{ secrets.MACOS_NOTARY_API_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.MACOS_NOTARY_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          codesign --force --options runtime --timestamp --sign "$APP_IDENT" "$BIN"
+          codesign --verify --strict --verbose=2 "$BIN"
+          ZIP="typeclip-v${VERSION}-macos-universal.zip"
+          STAGE=$(mktemp -d)
+          cp "$BIN" "$STAGE/typeclip"
+          (cd "$STAGE" && zip -j "$GITHUB_WORKSPACE/$ZIP" typeclip)
+          KEY_FILE="$RUNNER_TEMP/notary.p8"
+          printf '%s' "$NOTARY_KEY" | base64 -d > "$KEY_FILE"
+          xcrun notarytool submit "$ZIP" \
+            --key "$KEY_FILE" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" \
+            --wait
+          rm "$KEY_FILE"
+          # Bare Mach-O binaries can't be stapled; Gatekeeper verifies online (standard for CLIs).
+          shasum -a 256 "$ZIP" > "$ZIP.sha256"
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" \
+            --title "typeclip $GITHUB_REF_NAME" --generate-notes
+
+      - name: Bump Homebrew formula
+        env:
+          TAP_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHA=$(cut -d' ' -f1 "$ZIP.sha256")
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/cssllcio/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cat > tap/Formula/typeclip.rb <<EOF
+          class Typeclip < Formula
+            desc "Types your clipboard with human cadence - built for screen recordings"
+            homepage "https://github.com/cssllcio/typeclip"
+            url "https://github.com/cssllcio/typeclip/releases/download/v${VERSION}/typeclip-v${VERSION}-macos-universal.zip"
+            sha256 "${SHA}"
+            version "${VERSION}"
+
+            def install
+              bin.install "typeclip"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/typeclip --version")
+            end
+          end
+          EOF
+          cd tap
+          git config user.name "typeclip-release"
+          git config user.email "joe@cssllc.io"
+          git add Formula/typeclip.rb
+          git commit -m "typeclip ${VERSION}"
+          git push

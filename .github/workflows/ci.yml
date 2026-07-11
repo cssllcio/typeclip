@@ -1,0 +1,50 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Dry-run smoke (no Accessibility needed)
+        run: |
+          set -euo pipefail
+          BIN=.build/debug/typeclip
+          "$BIN" --version
+          "$BIN" --text "hello world" --dry-run --seed 1 > /dev/null
+          "$BIN" --text "hi there" --dry-run --seed 7 > a.txt
+          "$BIN" --text "hi there" --dry-run --seed 7 > b.txt
+          diff a.txt b.txt   # CLI-layer determinism witness
+          set +e
+          "$BIN" --text "" --dry-run
+          code=$?
+          set -e
+          [ "$code" -eq 4 ] || { echo "expected exit 4 for empty text, got $code"; exit 1; }
+          # Declined oversize confirm: >2000 chars, no --yes, stdin not a tty → exit 5.
+          BIG=$(printf 'a%.0s' $(seq 1 2101))
+          set +e
+          "$BIN" --text "$BIG" < /dev/null
+          code=$?
+          set -e
+          [ "$code" -eq 5 ] || { echo "expected exit 5 for unconfirmed oversize, got $code"; exit 1; }
+          # Stream separation: timeline on stdout, seed chatter on stderr.
+          # (No pipes into grep -q: early-exit grep SIGPIPEs the producer under pipefail.)
+          "$BIN" --text "hi" --dry-run --seed 1 > out.txt 2> err.txt
+          grep -q 'type "h"' out.txt
+          grep -q "seed: 1" err.txt
+          # stdin path (--text -)
+          echo "hi" | "$BIN" --text - --dry-run --seed 1 > stdin-out.txt
+          grep -q 'type "h"' stdin-out.txt
+          # golden lock: CLI dry-run output must match the committed engine fixture
+          "$BIN" --text $'Hello, world!\nDone.' --typo-rate 0.05 --submit --seed 42 --dry-run > golden-cli.txt
+          diff golden-cli.txt Tests/TypeclipCoreTests/Fixtures/golden-seed42.txt
