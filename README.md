@@ -66,7 +66,7 @@ keystroke-for-keystroke.
 - **Preview:** the countdown shows a preview of what's about to be typed.
 - **Oversize confirm:** clipboards over 2,000 chars ask first (`--yes` to skip).
 
-Exit codes: `0` done · `1` `--app` found no matching running app · `2` focus-change halt · `3` Accessibility missing ·
+Exit codes: `0` done · `1` `--app` activation failure (no match, or app never became frontmost) · `2` focus-change halt · `3` Accessibility missing ·
 `4` no text · `5` confirm declined.
 
 ## Release verification recipe (maintainers)

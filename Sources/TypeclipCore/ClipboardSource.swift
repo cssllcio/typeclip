@@ -7,7 +7,8 @@ public enum TextSource {
 
     public enum SourceError: Error { case empty, notUTF8 }
 
-    /// Raw text → normalized (CRLF→LF, one trailing newline trimmed). Throws on empty.
+    /// Raw text → normalized (CRLF→LF, one trailing newline trimmed).
+    /// Throws `.empty` on no text, `.notUTF8` when stdin bytes don't decode.
     public func resolve() throws -> String {
         let raw: String
         switch self {
