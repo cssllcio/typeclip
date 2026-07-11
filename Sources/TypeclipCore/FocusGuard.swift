@@ -9,13 +9,13 @@ public final class FocusGuard {
     public init() {}
 
     public func pin() {
-        let app = NSWorkspace.shared.frontmostApplication
+        let app = Frontmost.app()
         pinnedPID = app?.processIdentifier
         pinnedName = app?.localizedName ?? "?"
     }
 
     public var focusChanged: Bool {
         guard let pinned = pinnedPID else { return false }
-        return NSWorkspace.shared.frontmostApplication?.processIdentifier != pinned
+        return Frontmost.pid() != pinned
     }
 }

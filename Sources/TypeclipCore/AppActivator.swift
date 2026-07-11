@@ -29,9 +29,11 @@ public enum AppActivator {
             app.activate(options: [.activateIgnoringOtherApps])
         }
         // Poll up to 1s for the activation to take; bail rather than mis-type.
+        // Frontmost.pid() drains pending run-loop sources so the read reflects
+        // the activation we just triggered instead of a stale cached value.
         for _ in 0..<10 {
             usleep(100_000)
-            if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+            if Frontmost.pid() == app.processIdentifier {
                 return
             }
         }
