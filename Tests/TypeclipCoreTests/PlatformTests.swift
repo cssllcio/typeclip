@@ -32,4 +32,13 @@ final class PlatformTests: XCTestCase {
         // work headless (no events posted, no Accessibility needed).
         try KeyPoster().perform([], focusGuard: FocusGuard())
     }
+
+    func testDelayMicrosecondConversionClampsAndRounds() {
+        XCTAssertEqual(KeyPoster.microseconds(forDelayMs: 171.43), 171_430)
+        XCTAssertEqual(KeyPoster.microseconds(forDelayMs: 0), 0)
+        XCTAssertEqual(KeyPoster.microseconds(forDelayMs: -5), 0)
+        XCTAssertEqual(KeyPoster.microseconds(forDelayMs: .nan), 0)
+        XCTAssertEqual(KeyPoster.microseconds(forDelayMs: .infinity), 0)
+        XCTAssertEqual(KeyPoster.microseconds(forDelayMs: 1e12), UInt32.max)
+    }
 }

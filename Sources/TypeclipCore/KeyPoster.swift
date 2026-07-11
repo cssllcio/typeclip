@@ -7,6 +7,15 @@ public struct KeyPoster {
     private static let enterKeyCode: CGKeyCode = 36
     private static let backspaceKeyCode: CGKeyCode = 51
 
+    /// Saturating ms→µs conversion for usleep: non-finite or negative delays
+    /// sleep 0 (invalid upstream value — fail visible, not wedged); finite
+    /// oversized delays saturate at UInt32.max.
+    static func microseconds(forDelayMs ms: Double) -> UInt32 {
+        guard ms.isFinite, ms > 0 else { return 0 }
+        let us = (ms * 1_000).rounded()
+        return us >= Double(UInt32.max) ? UInt32.max : UInt32(us)
+    }
+
     private let source = CGEventSource(stateID: .combinedSessionState)
 
     public init() {}
@@ -15,8 +24,9 @@ public struct KeyPoster {
     /// BEFORE posting, so no keystroke ever lands in a newly-focused window.
     public func perform(_ plan: [KeystrokeEvent], focusGuard: FocusGuard) throws {
         for (index, event) in plan.enumerated() {
-            if event.delayBeforeMs > 0 {
-                usleep(UInt32(event.delayBeforeMs * 1_000))
+            let sleepMicros = Self.microseconds(forDelayMs: event.delayBeforeMs)
+            if sleepMicros > 0 {
+                usleep(sleepMicros)
             }
             if focusGuard.focusChanged {
                 throw Halt.focusChanged(afterEvents: index)
