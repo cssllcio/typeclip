@@ -5,7 +5,7 @@ public enum TextSource {
     case literal(String)
     case stdin
 
-    public enum SourceError: Error { case empty }
+    public enum SourceError: Error { case empty, notUTF8 }
 
     /// Raw text → normalized (CRLF→LF, one trailing newline trimmed). Throws on empty.
     public func resolve() throws -> String {
@@ -17,7 +17,10 @@ public enum TextSource {
             raw = s
         case .stdin:
             let data = FileHandle.standardInput.readDataToEndOfFile()
-            raw = String(data: data, encoding: .utf8) ?? ""
+            guard let decoded = String(data: data, encoding: .utf8) else {
+                throw SourceError.notUTF8
+            }
+            raw = decoded
         }
         let normalized = TextNormalizer.normalize(raw)
         guard !normalized.isEmpty else { throw SourceError.empty }

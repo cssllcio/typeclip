@@ -75,7 +75,7 @@ OTHER
   --version              Build version (stamped from git tag in CI).
 ```
 
-Exit codes: `0` success · `2` halted by focus change · `3` Accessibility not granted · `4` no text (empty clipboard/stdin) · `5` user declined the oversize confirm. Countdown, preview, and progress go to **stderr**; `--dry-run`'s timeline goes to **stdout** (pipeable).
+Exit codes: `0` success · `1` --app activation failure · `2` halted by focus change · `3` Accessibility not granted · `4` no text (empty clipboard/stdin) · `5` user declined the oversize confirm. Countdown, preview, and progress go to **stderr**; `--dry-run`'s timeline goes to **stdout** (pipeable).
 
 ## Typing engine
 

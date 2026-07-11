@@ -82,6 +82,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" \
             --title "typeclip $GITHUB_REF_NAME" --generate-notes
 

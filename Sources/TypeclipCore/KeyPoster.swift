@@ -37,13 +37,16 @@ public struct KeyPoster {
 
     private func post(_ action: KeyAction) {
         switch action {
+        // Zero flags: physically held modifiers (e.g. Cmd during a Cmd+Tab abort) must not turn typed characters into shortcuts.
         case .typeCluster(let s):
             let units = Array(s.utf16)
             let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true)
             down?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+            down?.flags = []
             down?.post(tap: .cghidEventTap)
             let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false)
             up?.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+            up?.flags = []
             up?.post(tap: .cghidEventTap)
         case .pressEnter(let shift):
             pressKey(Self.enterKeyCode, flags: shift ? [.maskShift] : [])

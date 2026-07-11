@@ -41,4 +41,12 @@ final class PlatformTests: XCTestCase {
         XCTAssertEqual(KeyPoster.microseconds(forDelayMs: .infinity), 0)
         XCTAssertEqual(KeyPoster.microseconds(forDelayMs: 1e12), UInt32.max)
     }
+
+    func testActivatorThrowsForUnknownApp() {
+        XCTAssertThrowsError(try AppActivator.activate(nameContaining: "zz-nonexistent-app-zz")) { error in
+            guard case AppActivator.ActivationError.notRunning = error else {
+                return XCTFail("expected .notRunning, got \(error)")
+            }
+        }
+    }
 }

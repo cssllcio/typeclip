@@ -15,7 +15,7 @@ Or from source (needs Xcode command-line tools):
 ```sh
 git clone https://github.com/cssllcio/typeclip.git
 cd typeclip && swift build -c release
-cp .build/release/typeclip /usr/local/bin/
+sudo cp .build/release/typeclip /usr/local/bin/
 ```
 
 ## First run: Accessibility permission
@@ -66,7 +66,7 @@ keystroke-for-keystroke.
 - **Preview:** the countdown shows a preview of what's about to be typed.
 - **Oversize confirm:** clipboards over 2,000 chars ask first (`--yes` to skip).
 
-Exit codes: `0` done · `1` --app found no matching running app · `2` focus-change halt · `3` Accessibility missing ·
+Exit codes: `0` done · `1` `--app` found no matching running app · `2` focus-change halt · `3` Accessibility missing ·
 `4` no text · `5` confirm declined.
 
 ## Release verification recipe (maintainers)

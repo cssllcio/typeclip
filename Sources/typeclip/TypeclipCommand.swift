@@ -83,6 +83,9 @@ struct Typeclip: ParsableCommand {
         let resolved: String
         do {
             resolved = try source.resolve()
+        } catch TextSource.SourceError.notUTF8 {
+            logErr("typeclip: stdin was not valid UTF-8")
+            throw ExitCode(4)
         } catch {
             logErr("typeclip: no text to type (empty clipboard/input)")
             throw ExitCode(4)
@@ -92,14 +95,13 @@ struct Typeclip: ParsableCommand {
         let chosenSeed = seed ?? UInt64.random(in: .min ... .max)
         logErr("seed: \(chosenSeed)")
 
-        // 3. Build the performance plan.
+        // 3. Build the performance options.
         let opts = PerformanceOptions(wpm: wpm, flat: flat, typoRate: typoRate,
                                       newlineMode: newline, submit: submit, seed: chosenSeed)
-        let plan = PerformanceEngine.plan(text: resolved, options: opts)
 
         // 4. Dry run needs no permissions and touches nothing.
         if dryRun {
-            print(DryRunRenderer.render(plan))
+            print(DryRunRenderer.render(PerformanceEngine.plan(text: resolved, options: opts)))
             return
         }
 
@@ -128,7 +130,11 @@ struct Typeclip: ParsableCommand {
             throw ExitCode(3)
         }
 
-        // 7. Preview + countdown (Ctrl+C freely here).
+        // 7. Build the plan — deferred until after the size/permission gates so an
+        // accidental multi-megabyte clipboard doesn't burn time and memory before refusal.
+        let plan = PerformanceEngine.plan(text: resolved, options: opts)
+
+        // 8. Preview + countdown (Ctrl+C freely here).
         logErr("will type \(resolved.count) chars — preview: \(Self.previewLine(resolved))")
         if delay > 0 {
             logErr("click into the target field…")
@@ -138,7 +144,7 @@ struct Typeclip: ParsableCommand {
             }
         }
 
-        // 8. Optional app activation, then pin focus.
+        // 9. Optional app activation, then pin focus.
         if let appName = app {
             do {
                 try AppActivator.activate(nameContaining: appName)
@@ -151,7 +157,7 @@ struct Typeclip: ParsableCommand {
         guardian.pin()
         logErr("typing into \(guardian.pinnedName)…")
 
-        // 9. Perform.
+        // 10. Perform.
         do {
             try KeyPoster().perform(plan, focusGuard: guardian)
         } catch KeyPoster.Halt.focusChanged(let count) {

@@ -42,3 +42,9 @@ jobs:
           "$BIN" --text "hi" --dry-run --seed 1 > out.txt 2> err.txt
           grep -q 'type "h"' out.txt
           grep -q "seed: 1" err.txt
+          # stdin path (--text -)
+          echo "hi" | "$BIN" --text - --dry-run --seed 1 > stdin-out.txt
+          grep -q 'type "h"' stdin-out.txt
+          # golden lock: CLI dry-run output must match the committed engine fixture
+          "$BIN" --text $'Hello, world!\nDone.' --typo-rate 0.05 --submit --seed 42 --dry-run > golden-cli.txt
+          diff golden-cli.txt Tests/TypeclipCoreTests/Fixtures/golden-seed42.txt
