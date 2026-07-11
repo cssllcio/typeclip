@@ -22,6 +22,11 @@ public struct KeyPoster {
 
     /// Plays the plan in real time. Checks the focus guard after each delay,
     /// BEFORE posting, so no keystroke ever lands in a newly-focused window.
+    ///
+    /// MUST run on the main thread: the focus guard drains this thread's run
+    /// loop to refresh `NSWorkspace.frontmostApplication` (see Frontmost), and
+    /// workspace notifications are delivered on the main run loop. Moving this
+    /// to a background thread would silently make the guard stale again.
     public func perform(_ plan: [KeystrokeEvent], focusGuard: FocusGuard) throws {
         for (index, event) in plan.enumerated() {
             let sleepMicros = Self.microseconds(forDelayMs: event.delayBeforeMs)
