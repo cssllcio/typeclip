@@ -18,7 +18,7 @@ let package = Package(
         ),
         .testTarget(
             name: "TypeclipCoreTests",
-            dependencies: ["TypeclipCore"],
+            dependencies: ["TypeclipCore", "typeclip"],
             resources: [.copy("Fixtures")]
         ),
     ]
